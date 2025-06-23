@@ -7,7 +7,7 @@ import { getBarangByVarian, createBarang, getBarangById, updateBarang, removeBar
 const router = Router();
 
 router.post('/',authenticateToken, roleMiddleware(Role.ADMIN, Role.SUPERVISOR), createBarang);
-router.get('/',authenticateToken,  getBarangByVarian);
+router.get('/:varian',authenticateToken,  getBarangByVarian);
 router.get('/:id',authenticateToken, getBarangById);
 router.put('/:id',authenticateToken, roleMiddleware(Role.ADMIN, Role.SUPERVISOR), updateBarang);
 router.delete('/:id',authenticateToken, roleMiddleware(Role.ADMIN, Role.SUPERVISOR), removeBarang);
