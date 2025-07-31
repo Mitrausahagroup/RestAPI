@@ -1,12 +1,27 @@
 import { UserService } from "../services/user.service";
 import { Request, Response } from "express";
+import prisma from "../utils/prisma";
 
 const userService = new UserService()
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const users = await userService.getAllUser();
-    res.status(201).json(users);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    const rawSortOrder = req.query.sortOrder as string;
+    const sortOrder = rawSortOrder === 'asc' || rawSortOrder === 'desc' ? rawSortOrder : 'desc';
+
+    const result = await userService.getAllUser(page, limit, sortBy, sortOrder);
+
+    res.json({
+      success: true,
+      data: result.data,
+      total: result.total,
+      totalPage: result.totalPage,
+      currentPage: result.currentPage,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
@@ -30,8 +45,19 @@ export const getUserById = async (req: Request, res: Response) => {
 };
 
 export const createUser = async (req: Request, res: Response) => {
+
+   const { NIK, name, password, role} =  req.body
+
+    const existingUser = await prisma.user.findUnique({
+    where: { NIK },
+  });
+
+  if (existingUser) {
+      res.status(403).json({ error: 'Nomor karyawan sudah dipakai' });
+      return;
+  }
+
   try {
-    const { NIK, name, password, role} =  req.body
     const userData = {
       NIK: NIK,
       name: name,

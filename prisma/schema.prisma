@@ -1,22 +1,15 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "mysql" // bisa juga postgresql
   url      = env("DATABASE_URL")
 }
 
 enum Role {
   ADMIN
   SUPERVISOR
-  SALES
 }
 
 enum Status {
@@ -30,115 +23,140 @@ enum Varian {
   KASAR
 }
 
-enum Kondisi{
+enum Kondisi {
   BAIK
   RUSAK
 }
 
-model users {
-  id        String      @id @default(uuid())
-  NIK       String      @unique
-  password  String
-  name      String
-  role      Role     
-  createdAt DateTime @default(now())
+model User {
+  id         String       @id @default(uuid())
+  name       String
+  NIK        String       @unique
+  password   String
+  role       Role
+  createdAt  DateTime     @default(now())
 
-  pengambilan     pengambilan[]
-  penurunan       penurunan[]
-  pengembalian    pengembalian[]
-
-  @@map("users")
+  pengambilan   Pengambilan[]
+  penurunan     Penurunan[]
+  pengembalian  Pengembalian[]
 }
 
-model barang {
-  id         String    @id @default(uuid())
+model Sales {
+  id         String       @id @default(uuid())
+  nama       String
+  createdAt  DateTime     @default(now())
+  toko       Toko[]
+  pengambilan Pengambilan[]
+  pengiriman  Penurunan[]
+  pengembalian Pengembalian[]
+}
+
+model Barang {
+  id         String           @id @default(uuid())
   nama       String
   varian     Varian
   stok       Int
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime         @default(now())
 
-  pengambilanItem     pengambilanItem[]
-  penurunanItem       penurunanItem[]
-  pengembalianItem    pengembalianItem[]
-
-  @@map("barang")
+  pengambilanItem   PengambilanItem[]
+  penurunanItem     PenurunanItem[]
+  pengembalianItem  PengembalianItem[]
 }
 
+model Toko {
+  id        String     @id @default(uuid())
+  nama      String
+  alamat    String
+  fotoUrl   String     // WAJIB
+  noHp      String
+  lat       Float
+  lon       Float
+  createdAt DateTime     @default(now())
 
-model pengambilan {
-  id         String              @id @default(uuid())
-  user       users               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
+  sales     Sales     @relation(fields: [salesId], references: [id])
+  salesId   String
 
-  items      pengambilanItem[]  // relasi ke banyak barang
-  fotoUrl    String
+  barcode   Barcode    @relation(name: "BarcodeOnToko",fields: [barcodeId], references: [id])
+  barcodeId String     @unique
+
+  pengiriman Penurunan[]
+
+}
+
+model Barcode {
+  id        String     @id @default(uuid())
+  isUsed    Boolean    @default(false)
+  usedBy    String?    @unique
+  createdAt  DateTime  @default(now())
+  toko      Toko?      @relation(name: "BarcodeOnToko") 
+}
+
+model Pengambilan {
+  id         String             @id @default(uuid())
+  sales      Sales              @relation(fields: [salesId], references: [id])
+  salesId    String
+  user       User?               @relation(fields: [userId], references: [id])
+  userId     String?
+  fotoUrl    String?            // opsional
   status     Status             @default(PENDING)
   createdAt  DateTime           @default(now())
 
-  @@map("pengambilan")
+  items      PengambilanItem[]
 }
 
-model pengambilanItem {
+model PengambilanItem {
   id             String        @id @default(uuid())
-  pengambilan    pengambilan   @relation(fields: [pengambilanId], references: [id], onDelete: Cascade)
+  pengambilan    Pengambilan   @relation(fields: [pengambilanId], references: [id])
   pengambilanId  String
 
-  barang         barang        @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  barang         Barang        @relation(fields: [barangId], references: [id])
   barangId       String
   jumlah         Int
-
-  @@map("pengambilan_item")
 }
 
-model penurunan {
-  id         String             @id @default(uuid())
-  user       users              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
+model Penurunan {
+  id         String           @id @default(uuid())
+  sales      Sales            @relation(fields: [salesId], references: [id])
+  salesId    String
+  user       User?            @relation(fields: [userId], references: [id])
+  userId     String?
+  toko       Toko             @relation(fields: [tokoId], references: [id])
+  tokoId     String
+  fotoUrl    String?          // opsional
+  createdAt  DateTime         @default(now())
 
-  toko       String
-  alamat     String
-
-  items      penurunanItem[]   // relasi ke banyak barang
-  fotoUrl    String
-  createdAt  DateTime          @default(now())
-
-  @@map("penurunan")
+  items      PenurunanItem[]
 }
 
-model penurunanItem {
-  id           String         @id @default(uuid())
-  penurunan    penurunan      @relation(fields: [penurunanId], references: [id], onDelete: Cascade)
+model PenurunanItem {
+  id           String       @id @default(uuid())
+  penurunan    Penurunan    @relation(fields: [penurunanId], references: [id])
   penurunanId  String
 
-  barang       barang         @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  barang       Barang       @relation(fields: [barangId], references: [id])
   barangId     String
   jumlah       Int
-
-  @@map("penurunan_item")
 }
 
-model pengembalian {
-  id         String               @id @default(uuid())
-  user       users                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
+model Pengembalian {
+  id         String             @id @default(uuid())
+  user       User?               @relation(fields: [userId], references: [id])
+  userId     String?
+  sales      Sales              @relation(fields: [salesId], references: [id])
+  salesId    String
+  fotoUrl    String?            // opsional
+  createdAt  DateTime           @default(now())
 
-  items      pengembalianItem[]  // relasi ke banyak barang
-  fotoUrl    String
-  createdAt  DateTime            @default(now())
-
-  @@map("pengembalian")
+  items      PengembalianItem[]
 }
 
-model pengembalianItem {
-  id             String           @id @default(uuid())
-  pengembalian   pengembalian     @relation(fields: [pengembalianId], references: [id], onDelete: Cascade)
-  pengembalianId String
+model PengembalianItem {
+  id              String         @id @default(uuid())
+  pengembalian    Pengembalian   @relation(fields: [pengembalianId], references: [id])
+  pengembalianId  String
 
-  barang         barang           @relation(fields: [barangId], references: [id], onDelete: Cascade)
-  barangId       String
-  jumlah         Int
-  kondisi        Kondisi
-  
-  @@map("pengembalian_item")
+  barang          Barang         @relation(fields: [barangId], references: [id])
+  barangId        String
+  jumlah          Int
+  kondisi         Kondisi
 }
-

@@ -3,7 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 
 export const roleMiddleware = (...roles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = res.locals.jwt.role; 
+    const userRole = res.locals?.jwt?.role;
+    
     if (!userRole) {
       res.status(403).json({ message: "Akses ditolak, Role tidak ditemukan" });
     } else{

@@ -7,24 +7,12 @@ export class UserService {
     NIK: string;
     password: string;
     name: string;
-    role: "ADMIN" | "SUPERVISOR" | "SALES";
+    role: "ADMIN" | "SUPERVISOR";
   }) {
     try {
-
-  const existingUser = await prisma.users.findUnique({
-    where: { NIK: data.NIK },
-  });
-
-  if (existingUser) {
-     return {
-            success: false,
-            message: 'NIK sudah terpakai',
-        }
-  }
-
       const hashedPassword = await bcrypt.hash(data.password, 10);
 
-      const user = prisma.users.create({
+      const user = prisma.user.create({
         data: {
           NIK: data.NIK,
           password: hashedPassword,
@@ -44,11 +32,11 @@ export class UserService {
       NIK?: string;
       password?: string;
       name?: string;
-      role?: "ADMIN" | "SUPERVISOR" | "SALES";
+      role?: "ADMIN" | "SUPERVISOR";
     }
   ) {
     try {
-      return await prisma.users.update({
+      return await prisma.user.update({
         where: { id },
         data,
       });
@@ -59,7 +47,7 @@ export class UserService {
 
   async deleteUser(id: string) {
     try {
-      return await prisma.users.delete({
+      return await prisma.user.delete({
         where: { id },
       });
     } catch (error) {
@@ -68,13 +56,13 @@ export class UserService {
   }
 
   async getUserById(id: string) {
-    return await prisma.users.findUnique({
+    return await prisma.user.findUnique({
       where: { id },
     });
   }
 
   async findNIK(NIK: string) {
-    return await prisma.users.findUnique({
+    return await prisma.user.findUnique({
       where: { NIK },
     });
   }
@@ -83,7 +71,7 @@ export class UserService {
     try {
       const hashedPassword = await bcrypt.hash(newPassword!, 10);
 
-      return await prisma.users.update({
+      return await prisma.user.update({
         where: { NIK },
         data: { password: hashedPassword },
       });
@@ -92,14 +80,41 @@ export class UserService {
     }
   }
 
-  async getAllUser() {
-    return await prisma.users.findMany()
+  async getAllUser(page : number, limit :number, sortBy = 'createdAt', sortOrder: 'asc' | 'desc' = 'desc') {
+    const skip = (page - 1) * limit;
+
+    const allowedSortBy = ['createdAt'];
+    const allowedSortOrder = ['asc', 'desc'];
+
+    const sortByFinal = allowedSortBy.includes(sortBy) ? sortBy : 'createdAt';
+    const sortOrderFinal = allowedSortOrder.includes(sortOrder) ? sortOrder : 'desc';
+
+  const [data, total] = await Promise.all([
+    prisma.user.findMany({
+      skip,
+      take: limit,
+       orderBy: {
+        [sortByFinal]: sortOrderFinal,
+      }
+    }),
+    prisma.user.count(),
+  ]);
+
+  const totalPage = Math.ceil(total / limit);
+
+  return {
+    success: true,
+    data,
+    total,
+    totalPage,
+    currentPage: page,
+  };
   }
 
 
  async updatePassword(userId: string, newPassword: string){
   const hashedPassword = await bcrypt.hash(newPassword, 10);
-  return prisma.users.update({
+  return prisma.user.update({
     where: { id: userId },
     data: { password: hashedPassword },
   });
@@ -110,7 +125,7 @@ export class UserService {
     if (!secret) {
       throw new Error('JWT_SECRET is not defined in the environment variables'); 
     }
-    const token = jwt.sign({ id: userId, role:roleUser }, secret, { expiresIn: '1h' });
+    const token = jwt.sign({ id: userId, role:roleUser }, secret, { expiresIn:  60 * 60 * 24 * 7 });
 
     return token;
   }

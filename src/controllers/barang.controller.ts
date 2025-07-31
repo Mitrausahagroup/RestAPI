@@ -6,8 +6,21 @@ const barangService = new BarangService()
 
 export const fetchBarang = async (req: Request, res: Response) => {
   try {
-    const barang = await barangService.getBarang();
-    res.status(201).json(barang);
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    const rawSortOrder = req.query.sortOrder as string;
+    const sortOrder = rawSortOrder === 'asc' || rawSortOrder === 'desc' ? rawSortOrder : 'desc';
+
+    const barang = await barangService.getBarang(page, limit, sortBy, sortOrder);
+     res.json({
+      success: true,
+      data: barang.data,
+      total: barang.total,
+      totalPage: barang.totalPage,
+      currentPage: barang.currentPage,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch barang' });
   }

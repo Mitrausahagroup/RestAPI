@@ -3,136 +3,292 @@ import { Request, Response } from "express";
 import { uploadCompressedImage } from '../utils/uploadImage';
 import path from "path";
 import fs from 'fs';
+import { Status } from "@prisma/client";
+import prisma from "../utils/prisma";
 
-const ambilService = new PengambilanService()
+const ambilService = new PengambilanService();
 
-export const getAllambils = async (req: Request, res: Response) => {
+export const getAllPengambilan = async (req: Request, res: Response) => {
   try {
-    const pengambilan = await ambilService.getAll();
-    res.status(201).json(pengambilan);
+
+     const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+     const sortBy = (req.query.sortBy as string) || 'createdAt';
+    const rawSortOrder = req.query.sortOrder as string;
+    const sortOrder = rawSortOrder === 'asc' || rawSortOrder === 'desc' ? rawSortOrder : 'desc';
+
+    const { data, total } = await ambilService.getAll(page, limit, sortBy, sortOrder);
+
+    const totalPage = Math.ceil(total / limit);
+
+    res.status(200).json({
+      sukses: true,
+      data,
+      total,
+      page,
+      limit,
+      totalPage,
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch pengambilan' });
+    console.error('Gagal mengambil semua pengambilan:', error);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: 'Gagal mengambil data pengambilan' 
+    });
   }
 };
 
 export const getPengambilanByStatus = async (req: Request, res: Response) => {
   try {
-    const { status } =  req.params
+    const { status } = req.params;
 
-     if (!['PENDING', 'DISETUJUI', 'DITOLAK'].includes(status)) {
-     res.status(404).json({ error: 'Status tidak valid' })
-  }
+    if (!Object.values(Status).includes(status as Status)) {
+       res.status(400).json({ 
+        sukses: false,
+        pesan: 'Status tidak valid' 
+      });
+    }
 
-    const pengambilan = ambilService.getByStatus(status as 'PENDING' | 'DISETUJUI' | 'DITOLAK');
-    res.status(201).json(pengambilan);
+    const pengambilan = await ambilService.getByStatus(status as Status);
+    res.status(200).json({
+      sukses: true,
+      data: pengambilan
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch pengambilan' });
+    console.error('Gagal mengambil pengambilan by status:', error);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: 'Gagal mengambil data pengambilan' 
+    });
   }
 };
 
 export const createPengambilan = async (req: Request, res: Response) => {
-  try {
-    const { userId, items } = JSON.parse(req.body.data);
+  try { 
     const file = req.file;
+    const { salesId } = req.body; 
 
-    if (!file) {
-     res.status(400).json({ error: 'Foto tidak ditemukan' }); 
+     const findSales = await prisma.sales.findFirst({
+      where: {id :salesId}
+    })
+
+    if (!findSales) {
+      res.status(404).json({
+        sukses: false,
+        pesan: 'Sales tidak ditemukan'
+      });
     }
-   let fotoUrl = ''
+
+    let items: { barangId: string; jumlah: number }[] = [];
+
+    try {
+      items = typeof req.body.items === 'string' ? 
+        JSON.parse(req.body.items) : 
+        req.body.items;
+    } catch (error) {
+       res.status(400).json({
+        sukses: false,
+        pesan: 'Format items tidak valid'
+      });
+    }
+
+    if (!Array.isArray(items)) {
+       res.status(400).json({
+        sukses: false,
+        pesan: 'Items harus berupa array'
+      });
+    }
+
+    if (items.length === 0) {
+       res.status(400).json({
+        sukses: false,
+        pesan: 'Items tidak boleh kosong'
+      });
+    }
+
+    let fotoUrl: string | null = null;
     if (file) {
-      fotoUrl = await uploadCompressedImage(file.buffer); 
+      fotoUrl = await uploadCompressedImage(file.buffer, {
+        prefix: "pengambilan",
+        salesName: findSales?.nama
+      });
     }
-    const result = await ambilService.createPengambilan({
+
+    const userId = res.locals.jwt?.id;
+
+    const result = await ambilService.createAmbil({
       userId,
+      salesId,
       fotoUrl,
-      items,
+      items
     });
 
     res.status(201).json(result);
-  } catch (error) {
-    console.error('Create error:', error);
-    res.status(500).json({ error: 'Gagal membuat pengambilan' });
+  } catch (error: any) {
+    console.error('Gagal membuat pengambilan:', error);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: error.message || 'Gagal membuat pengambilan' 
+    });
   }
 };
 
 export const updateStatusPengambilan = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
+    const { id, status } = req.params;
 
     if (!['DISETUJUI', 'DITOLAK'].includes(status)) {
-       res.status(400).json({ error: 'Status tidak valid' });
+       res.status(400).json({
+        sukses: false,
+        pesan: 'Status tidak valid'
+      });
     }
 
-    const result = await ambilService.updateStatus(id, status);
+    const result = await ambilService.updateStatus(id, status as Status);
     res.status(200).json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Gagal memperbarui status:', err);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: err.message || 'Gagal memperbarui status pengambilan' 
+    });
   }
 };
-
 
 export const updatePengambilan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { userId, items } = JSON.parse(req.body.data);
-    const file = req.file;
+    const { salesId, items } = req.body;
+    
+    const findSales = await prisma.sales.findFirst({ where: { id: salesId } });
 
-     const existing = await ambilService.getById(id);
-
+    const existing = await ambilService.getById(id);
     if (!existing) {
-      res.status(404).json({ error: 'Data tidak ditemukan' });
+      res.status(404).json({
+        sukses: false,
+        pesan: 'Data pengambilan tidak ditemukan'
+      });
+      return;
     }
 
-    let fotoUrl: string | undefined = existing!.fotoUrl;
+    let parsedItems;
+        try {
+          parsedItems = JSON.parse(items); // items dari frontend adalah string JSON
+        } catch (e) {
+         res.status(400).json({
+            success: false,
+            error: "Format items tidak valid",
+          });
+          return
+        }
+
+        console.log(salesId, parsedItems)
+    
+
+    const file = req.file;
+
+
+    let fotoUrl: string | null = existing.fotoUrl;
 
     if (file) {
-
-      if (existing!.fotoUrl) {
-        const oldPath = path.join(__dirname, '../../uploads/', existing!.fotoUrl);
+      if (existing.fotoUrl) {
+        const oldPath = path.join(__dirname, '../../uploads/', existing.fotoUrl);
         if (fs.existsSync(oldPath)) {
           fs.unlinkSync(oldPath);
         }
       }
 
-
-      fotoUrl = await uploadCompressedImage(file.buffer); 
+      fotoUrl = await uploadCompressedImage(file.buffer, {
+        prefix: 'pengambilan',
+      });
     }
 
-    const result = await ambilService.updatePengambilan(id, {
-      userId,
+    const result = await ambilService.updateAmbil(id, {
+      salesId,
       fotoUrl,
-      items,
+      items: parsedItems
     });
 
-    res.status(200).json(result);
+    res.status(200).json(result); 
   } catch (err: any) {
-    console.error('Update error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('Gagal memperbarui pengambilan:', err);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: err.message || 'Gagal memperbarui pengambilan' 
+    });
   }
 };
 
-export const removePengambilan = async (req: Request, res: Response) => {
+
+
+export const deletePengambilan = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params 
+    const { id } = req.params;
 
     const existing = await ambilService.getById(id);
 
     if (!existing) {
-      res.status(404).json({ error: 'Pengambilan tidak ditemukan' });
+       res.status(404).json({
+        sukses: false,
+        pesan: 'Pengambilan tidak ditemukan'
+      });
     }
 
-    const transaksi = await ambilService.removePengambilan(id);
-    
+    const result = await ambilService.deleteAmbil(id);
 
+    // Hapus foto terkait jika ada
     if (existing!.fotoUrl) {
-          const filePath = path.join(__dirname, '../../uploads/', existing!.fotoUrl);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      res.status(201).json(transaksi); 
+      const filePath = path.join(__dirname, '../../uploads/', existing!.fotoUrl);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Gagal menghapus pengambilan:', error);
+    res.status(500).json({ 
+      sukses: false,
+      pesan: error.message || 'Gagal menghapus pengambilan' 
+    });
+  }
+
+
+};
+
+
+export const getDailySummary = async (req: Request, res: Response) =>  {
+
+  try {
+    // Get date from query params or use current date
+    const date = req.query.date ? new Date(req.query.date as string) : new Date();
+
+    // Validate date
+    if (isNaN(date.getTime())) {
+       res.status(400).json({
+        sukses: false,
+        pesan: 'Format tanggal tidak valid',
+      });
+    }
+
+    // Get summary from service
+    const result = await ambilService.getDailyPengambilanSummary(date);
+
+    if (!result) {
+       res.status(500).json(result);
+    }
+
+     res.status(200).json({
+      sukses: true,
+      total: result.total,
+      count: result.count,
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete transaksi' });
+    console.error(error);
+     res.status(500).json({
+      sukses: false,
+      pesan: 'Terjadi kesalahan server',
+    });
   }
 };

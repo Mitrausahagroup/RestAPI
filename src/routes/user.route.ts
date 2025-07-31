@@ -6,7 +6,7 @@ import { getAllUsers, createUser, getUserById, updateUser, removeUser } from '..
 
 const router = Router();
 
-router.post('/', authenticateToken, roleMiddleware(Role.ADMIN),  createUser);
+router.post('/', createUser);
 router.get('/', authenticateToken, roleMiddleware(Role.ADMIN, Role.SUPERVISOR), getAllUsers);
 router.get('/:id', authenticateToken, roleMiddleware(Role.ADMIN , Role.SUPERVISOR), getUserById);
 router.put('/:id', authenticateToken, roleMiddleware(Role.ADMIN), updateUser);
